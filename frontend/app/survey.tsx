@@ -1,5 +1,12 @@
 import React, { useState } from 'react';
 
+interface AssessmentResult {
+  severity_score: number;
+  urgency_message: string;
+  recommended_appointment: string;
+  assessment_time: string;
+}
+
 interface SurveyState {
   fever: boolean | null;
   urgentSymptoms: string[];
@@ -34,6 +41,113 @@ const MedicalSurvey = () => {
   });
 
   const [submitted, setSubmitted] = useState(false);
+  const [assessmentResult, setAssessmentResult] = useState<AssessmentResult | null>(null);
+
+  
+
+  const needsUrgentCare = () => {
+    return (
+      state.fever ||
+      state.urgentSymptoms.length > 0 ||
+      state.severePain ||
+      (state.infectionSymptoms.length > 0 && !state.infectionSymptoms.includes('None of the above')) ||
+      (state.recentFall && !state.canBearWeight) ||
+      (state.chronicCondition && state.worseSymptomsToday)
+    );
+  };
+
+  const handleCheckboxChange = (array: string[], item: string, setter: (items: string[]) => void) => {
+    const index = array.indexOf(item);
+    if (index === -1) {
+      setter([...array, item]);
+    } else {
+      setter(array.filter(i => i !== item));
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    // alert("Form submitted!");
+
+
+    e.preventDefault();
+    
+    // Calculate the score
+    let score = 0;
+    const currentTime = new Date();
+    
+    // Core scoring logic
+    if (state.fever) score += 20;
+    
+    // Urgent symptoms scoring
+    const urgentSymptomScores: { [key: string]: number } = {
+      'Confusion or disorientation': 15,
+      'Persistent vomiting': 30,
+      'Severe dehydration (dizziness, dry mouth, no urination)': 25
+    };
+    
+    state.urgentSymptoms.forEach(symptom => {
+      if (symptom !== 'None of the above') {
+        score += urgentSymptomScores[symptom] || 0;
+      }
+    });
+    
+    if (state.severePain) score += 20;
+    
+    let infectionScore = state.infectionSymptoms.filter(s => s !== 'None of the above').length * 10;
+    score += Math.min(infectionScore, 30);
+    
+    if (state.recentFall && !state.canBearWeight) score += 20;
+    
+    if (state.chronicCondition && state.worseSymptomsToday) score += 25;
+    
+    const mentalHealthScore = state.mentalHealthConcerns.filter(s => s !== 'None of the above').length * 10;
+    score += Math.min(mentalHealthScore, 10);
+    
+    const dailyAssistanceScore = state.dailyAssistance.filter(s => s !== 'None of the above').length * 3;
+    score += Math.min(dailyAssistanceScore, 10);
+    
+    if (state.medicationManagement) score += 5;
+    if (state.poorNutrition) score += 2;
+    if (state.loneliness) score += 2;
+    
+    const finalScore = Math.min(score, 100);
+    
+    // Determine urgency and appointment time
+    let urgency: string;
+    let apptTime: Date;
+    
+    if (finalScore >= 90) {
+      urgency = "IMMEDIATE ATTENTION REQUIRED";
+      apptTime = new Date(currentTime.getTime() + (1 * 60 * 60 * 1000));
+    } else if (finalScore >= 75) {
+      urgency = "Very Urgent - Appointment needed quickly";
+      apptTime = new Date(currentTime.getTime() + (2 * 60 * 60 * 1000));
+    } else if (finalScore >= 60) {
+      urgency = "Urgent - Same Day Appointment Needed";
+      apptTime = new Date(currentTime.getTime() + (4 * 60 * 60 * 1000));
+    } else if (finalScore >= 40) {
+      urgency = "Schedule appointment within 24 hours";
+      apptTime = new Date(currentTime.getTime() + (24 * 60 * 60 * 1000));
+    } else if (finalScore >= 30) {
+      urgency = "Schedule appointment within 2 days";
+      apptTime = new Date(currentTime.getTime() + (2 * 24 * 60 * 60 * 1000));
+    } else {
+      urgency = "We recommend waiting until your routine checkup appointment";
+      apptTime = new Date(currentTime.getTime() + (7 * 24 * 60 * 60 * 1000));
+    }
+    
+    const result = {
+      severity_score: finalScore,
+      urgency_message: urgency,
+      recommended_appointment: apptTime.toLocaleString(),
+      assessment_time: currentTime.toLocaleString()
+    };
+  
+    setAssessmentResult(result);
+    setSubmitted(true);
+    console.log('Survey submitted:', state);
+    console.log('Assessment result:', result);
+  };
 
   const containerStyle = {
     maxWidth: '800px',
@@ -145,32 +259,17 @@ const MedicalSurvey = () => {
     marginLeft: '20px',
   };
 
-  const needsUrgentCare = () => {
-    return (
-      state.fever ||
-      state.urgentSymptoms.length > 0 ||
-      state.severePain ||
-      (state.infectionSymptoms.length > 0 && !state.infectionSymptoms.includes('None of the above')) ||
-      (state.recentFall && !state.canBearWeight) ||
-      (state.chronicCondition && state.worseSymptomsToday)
-    );
+  const resultStyles = {
+    marginTop: '20px',
+    padding: '15px',
+    border: '1px solid #ccc',
+    borderRadius: '4px',
+    backgroundColor: '#f9f9f9'
   };
 
-  const handleCheckboxChange = (array: string[], item: string, setter: (items: string[]) => void) => {
-    const index = array.indexOf(item);
-    if (index === -1) {
-      setter([...array, item]);
-    } else {
-      setter(array.filter(i => i !== item));
-    }
+  const resultItemStyles = {
+    marginBottom: '10px'
   };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setSubmitted(true);
-    console.log('Survey submitted:', state);
-  };
-
 
   const alertStyle = {
     padding: '15px',
@@ -610,29 +709,27 @@ const MedicalSurvey = () => {
             </div>
           </div>
           
-          
-        </form>
-      </div>
+          <div style={footerStyle}>
+            <button type="submit" style={buttonStyle}>
+                Submit Assessment
+            </button>
+              {submitted && assessmentResult &&(
+                <div style={{ marginTop: '20px', padding: '15px', border: '1px solid #ccc', borderRadius: '4px' }}>
+                  <h3>Assessment Results</h3>
+                  <p><strong>Severity Score:</strong> {assessmentResult.severity_score}</p>
+                  <p><strong>Urgency:</strong> {assessmentResult.urgency_message}</p>
+                  <p><strong>Recommended Appointment:</strong> {assessmentResult.recommended_appointment}</p>
+                  <p><strong>Assessment Time:</strong> {assessmentResult.assessment_time}</p>
+                </div>
+              )}
 
-      <div style={footerStyle}>
-        <button type="submit" style={buttonStyle}>
-          Submit Assessment
-        </button>
-
-        {submitted && needsUrgentCare() && (
-          <div style={{
-            marginTop: '20px',
-            padding: '15px',
-            backgroundColor: 'rgba(213, 0, 42, 0.1)',
-            border: '1px solid #d5002a',
-            borderRadius: '4px',
-            color: '#d5002a',
-            fontWeight: 'bold',
-          }}>
-            URGENT CARE NEEDED: Schedule immediate same-day appointment with high priority.
+            
           </div>
-        )}
+        </form>
+        
       </div>
+
+      
     </div>
   );
 };
